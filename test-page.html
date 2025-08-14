@@ -1,0 +1,186 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MCP 서버 테스트</title>
+    <style>
+        body { font-family: Arial, sans-serif; margin: 20px; }
+        .test-section { margin: 20px 0; padding: 15px; border: 1px solid #ddd; border-radius: 5px; }
+        button { margin: 5px; padding: 8px 12px; background: #007bff; color: white; border: none; border-radius: 3px; cursor: pointer; }
+        button:hover { background: #0056b3; }
+        .log { background: #f8f9fa; padding: 10px; border-radius: 3px; margin: 10px 0; font-family: monospace; white-space: pre-wrap; }
+        input { padding: 5px; margin: 5px; width: 100px; }
+    </style>
+</head>
+<body>
+    <h1>🧪 MCP 서버 테스트 페이지</h1>
+    
+    <div class="test-section">
+        <h3>연결 상태</h3>
+        <div id="connection-status">연결 중...</div>
+        <button onclick="testConnection()">연결 테스트</button>
+    </div>
+
+    <div class="test-section">
+        <h3>기본 가구 추가</h3>
+        <button onclick="addFurniture('chair')">의자 추가</button>
+        <button onclick="addFurniture('table')">테이블 추가</button>
+        <button onclick="addFurniture('sofa')">소파 추가</button>
+    </div>
+
+    <div class="test-section">
+        <h3>가구 선택</h3>
+        <input type="number" id="select-index" placeholder="인덱스" value="0" min="0">
+        <button onclick="selectFurniture()">가구 선택</button>
+    </div>
+
+    <div class="test-section">
+        <h3>가구 이동</h3>
+        <input type="number" id="move-id" placeholder="가구 ID" value="0" step="0.1">
+        <input type="number" id="move-x" placeholder="X" value="2" step="0.1">
+        <input type="number" id="move-y" placeholder="Y" value="0.5" step="0.1">
+        <input type="number" id="move-z" placeholder="Z" value="1" step="0.1">
+        <button onclick="moveFurniture()">이동</button>
+    </div>
+
+    <div class="test-section">
+        <h3>가구 회전</h3>
+        <input type="number" id="rotate-id" placeholder="가구 ID" value="0" step="0.1">
+        <input type="number" id="rotate-x" placeholder="X" value="0" step="0.1">
+        <input type="number" id="rotate-y" placeholder="Y" value="1.57" step="0.1">
+        <input type="number" id="rotate-z" placeholder="Z" value="0" step="0.1">
+        <button onclick="rotateFurniture()">회전</button>
+    </div>
+
+    <div class="test-section">
+        <h3>장면 관리</h3>
+        <button onclick="saveScene()">장면 저장</button>
+        <button onclick="loadScene()">장면 불러오기</button>
+        <button onclick="clearFurnitures()">모든 가구 삭제</button>
+    </div>
+
+    <div class="test-section">
+        <h3>상태 조회</h3>
+        <button onclick="getState()">현재 상태 보기</button>
+        <button onclick="listFurnitures()">가구 목록</button>
+    </div>
+
+    <div class="test-section">
+        <h3>로그</h3>
+        <button onclick="clearLog()">로그 지우기</button>
+        <div id="log" class="log"></div>
+    </div>
+
+    <script>
+        let ws = null;
+        let requestId = 0;
+
+        function log(message) {
+            const logDiv = document.getElementById('log');
+            const timestamp = new Date().toLocaleTimeString();
+            logDiv.textContent += `[${timestamp}] ${message}\n`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        function connect() {
+            ws = new WebSocket('ws://127.0.0.1:7801/rpc');
+            
+            ws.onopen = () => {
+                document.getElementById('connection-status').textContent = '✅ 연결됨';
+                log('MCP 서버에 연결됨');
+            };
+            
+            ws.onmessage = (event) => {
+                try {
+                    const response = JSON.parse(event.data);
+                    log(`응답: ${JSON.stringify(response, null, 2)}`);
+                } catch (e) {
+                    log(`원시 응답: ${event.data}`);
+                }
+            };
+            
+            ws.onerror = (error) => {
+                log(`오류: ${error.message}`);
+            };
+            
+            ws.onclose = () => {
+                document.getElementById('connection-status').textContent = '❌ 연결 끊김';
+                log('연결이 끊어짐');
+            };
+        }
+
+        function sendRequest(method, params) {
+            if (!ws || ws.readyState !== WebSocket.OPEN) {
+                log('❌ 서버에 연결되지 않음');
+                return;
+            }
+            
+            const request = {
+                id: ++requestId,
+                method,
+                params
+            };
+            
+            log(`요청: ${method} - ${JSON.stringify(params)}`);
+            ws.send(JSON.stringify(request));
+        }
+
+        function testConnection() {
+            sendRequest('describeTools', {});
+        }
+
+        function addFurniture(type) {
+            sendRequest('add_furniture', { type });
+        }
+
+        function selectFurniture() {
+            const index = parseInt(document.getElementById('select-index').value);
+            sendRequest('select_furniture', { index });
+        }
+
+        function moveFurniture() {
+            const id = parseInt(document.getElementById('move-id').value);
+            const x = parseFloat(document.getElementById('move-x').value);
+            const y = parseFloat(document.getElementById('move-y').value);
+            const z = parseFloat(document.getElementById('move-z').value);
+            sendRequest('move_furniture', { id, position: [x, y, z] });
+        }
+
+        function rotateFurniture() {
+            const id = parseInt(document.getElementById('rotate-id').value);
+            const x = parseFloat(document.getElementById('rotate-x').value);
+            const y = parseFloat(document.getElementById('rotate-y').value);
+            const z = parseFloat(document.getElementById('rotate-z').value);
+            sendRequest('rotate_furniture', { id, rotation: [x, y, z] });
+        }
+
+        function saveScene() {
+            sendRequest('save_scene', {});
+        }
+
+        function loadScene() {
+            sendRequest('load_scene', {});
+        }
+
+        function clearFurnitures() {
+            sendRequest('clear_furnitures', {});
+        }
+
+        function getState() {
+            sendRequest('get_state', {});
+        }
+
+        function listFurnitures() {
+            sendRequest('list_furnitures', {});
+        }
+
+        function clearLog() {
+            document.getElementById('log').textContent = '';
+        }
+
+        // 페이지 로드 시 자동 연결
+        window.onload = connect;
+    </script>
+</body>
+</html>
